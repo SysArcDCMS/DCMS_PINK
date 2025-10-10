@@ -1,0 +1,246 @@
+###########################################
+Ongoing
+AppointmentCard
+
+PatientDetailPage
+    - handleScheduleAppointment: Should show recent schedule on "Recent Appointments" after creation
+
+Service catalog
+
+BookingForm Component
+    - Search for patient
+
+
+# September 4, 2025
+* always include server side implementation if ever need be.
+2. HIPAA
+4. HomePage services
+5. remove all data/mockdata
+instead, use supabase to initialize demo data
+6. Update Sign-up form
+7. Since booking now has date and time, how to proceed.
+    - Automatic booked. next transition is Reschedule or Cancel.
+    - statuses: booked, Complete, Cancelled
+8: Appoinments detail add today, weekly, monthly, custom, etc.
+9. HomeBookingForm
+- calendar weekday is not aligned with weekdate
+- same email can book as many, whould allow only one . DONE but make it a toast
+- also exclude breaks like lunch-break and merienda
+- must only allow current and future dates
+10. BookingForm
+    - 
+    - booked appointment does not show dashboard/appointments of patient
+11. Appointments table should have field
+notes: text field
+reason: defualt to Empty, dropdown list of reason of cancellation for cancelled booking, None for booked. 
+Appointment is immutable, we create a new Appointment 
+12. AppointmentCard
+    - Mark completed add dentists
+13. Password not hashed
+
+
+#############################################################################################
+ui/calendar
+FIX: day: "hover:bg-accent hover:text-accent-foreground dark:hover:bg-accent/50 h-9 w-9 p-0 font-normal aria-selected:opacity-100",
+buttoninvarinats is the culprit, inline-flex
+
+Appointments
+- missing action buttons Completed Cancelled and Notes
+
+BookingForm
+- add search patient name (walkin patient should be added first by the staff)
+- base the logic from HomeBookingForm. Or better create a new one that handle both Online Unregistered Patient Booking, Online Registered Patient Booking and Walk-in (Staff initiated) booking.
+
+Inventory
+- Edit is not updating the backend data
+- item added is rendered, but cache mechanism removed it and added back if the data is now in the database. Race condition
+- why not wait for successful from backend the update frontend
+
+always include server side implementation if ever need be.
+always list files that are affected/updated.
+
+
+TODO:
+    Inventory add item. Add pack and pcs on UOM
+    Service Catalog -> Average Price Icon, should be peso icon
+
+
+ui/calendar:
+- nav styling
+
+
+
+-- Manual changes --  
+##############################################################################################################################
+
+GenerateBillingDialog
+
+
+BillingPage
+- Reports
+-- report button that routes to /dashboard/billing/reports (BillingReportPage)
+-- check /dashboard/layout.tsx, handle billing reports separately to keep billing active
+
+BillingReportPage (copy the layout of AppointmentsReportPage, tabs, quick select, generate report.)
+x- Billing Status Report 
+x-- Totals of Pending, Partial, Paid, Discounted.
+    Inputs:
+    Date range
+    Status (optional)
+x- Revenue Report
+x-- Income vs. discounts over time.
+    Inputs:
+    Date range
+    Branch/Location (optional)
+x- Outstanding Balance Report
+x-- List of patients with unpaid/partial bills.
+    Inputs:
+    Date range
+    Patient (optional)
+x- you decide with the type of data visualization to use tha best suits for the report
+- Outstanding Balance Tab should use PHP currency icon
+const PesoSign = createLucideIcon("PesoSign", [
+  ["path", { d: "M6 4v16", key: "stem" }],
+  // P bowl
+  ["path", { d: "M6 4h6a5 5 0 0 1 0 10H6", key: "bowl" }],
+  // Upper horizontal stroke (slightly higher)
+  ["path", { d: "M4 7h14", key: "bar1" }],
+  // Lower horizontal stroke (slightly higher)
+  ["path", { d: "M4 11h14", key: "bar2" }],
+]);
+- Revenue Report Branch/Location
+- Outstanding Balance, if bill count > 4, make it row clickable to collapse and list all bill (balance and date only ) under the patient
+
+preform a type ot lint check first
+always include server side implementation if ever need be.
+always list files that are affected/updated.
+
+
+AppointmentsPage
+- appointment_field: add last_status_changed_by
+- service_field: performed_by: 
+AppointmentsReportPage
+
+
+
+
+
+DashboardPage
+    Appointment
+    - Booked not included in count
+    - KPI Cards
+    -- Appointments Today. Card(number, status) for Booked, Completed, Canceled, No-Show (Cancelled status with No-show reason)
+    -- No-SHow rate. Card(percentage, comparison vs last month)
+    - Graph Widgets
+    -- Weekly/Monthly Appointments Trend. Line Chart(x-axis: days/weeke. y-axis: count of appointments)
+    -- Appointment status breakdown (today). Bar chart (Booked, Completed, Canceled, No-Show)
+    -- TOp services (this month). Bar chart(x-axis: services, y-axis: count of services)
+    -- Appointment heatmap. Heatmap(Calendar/grid)(x-axis: hours, y-axis: days of week, color intensity = appointment count)
+
+    Billing
+
+HomeBookingForm
+- patient with outstanding balance can't booked
+- if email does not exists in users table, create an entry to users table
+{
+  "id": uuid,
+  "first_name": string,
+  "last_name": string,
+  "role": "patient",
+  "email": string,
+  "phone": string | null,
+  "canLogin": false,
+  "password": null,
+  "registrationType": "anonymous",
+  "createdAt": ISO8601 datetime with timezone,
+  "lastUpdatedAt": ISO8601 datetime with timezone
+}
+- if email exist and canLogin is false and other data like first_name is mismatched, use old data and show
+    “We found an existing patient record for this email. Booking will proceed under that record.”
+- If email exist and canLogin=true (registered), Block anonymous booking and show:
+    “This email is already registered. Please log in to continue.”
+- Form
+-- make first_name, last_name, email required. phone optional,
+-- currrnlty email and phone is dropdown, separate email from phone
+-- enable preferred date if sercvice is already filled
+other than this keep it as is, like services drop down, preferred date and  avaailable timeslot
+
+HomeBookingForm
+- line 631: disabled
+Type 'boolean | null' is not assignable to type 'boolean | undefined'.
+  Type 'null' is not assignable to type 'boolean | undefined'.ts(2322)
+index.d.ts(2959, 9): The expected type comes from property 'disabled' which is declared here on type 'IntrinsicAttributes & ClassAttributes<HTMLButtonElement> & ButtonHTMLAttributes<HTMLButtonElement> & VariantProps<...> & { ...; }'
+(property) ButtonHTMLAttributes<HTMLButtonElement>.disabled?: boolean | undefined
+- user creation should be triggered submit button
+
+PatientsPage
+- check if data covers or match the current users table
+
+PatientProvider
+- check if data covers or match the current users table
+
+always utilize /app/api to make codebase clean, not scattered. and use Promise<> client side to prevent build error
+always include server side implementation needed.
+preform a type ot lint check first
+always list files that are affected/updated.
+
+
+ReportsPage
+- Appointments + Billing → Revenue from Completed Appointments
+-- Income generated by completed appointments.
+    Inputs:
+    Date range
+    Doctor/Service (optional)
+
+- Appointments + Billing → Canceled/No-show Revenue Loss
+-- Estimated revenue lost due to cancel/no-show.
+    Inputs:
+    Date range
+    Reason (optional)
+
+Patient
+- data should come from users table first then linked appointmment if available
+- 
+
+= billing view her own
+-- iew bills/invoices
+-- Download receipts/statements
+- Patient can review past and upcoming visits.
+- Medical & Dental Records
+-- View official medical/dental history
+-- Read-only access to provider-entered data.
+
+- Medical History
+-- Option for patient to create, update and delete its own Medical History
+- Service History 
+-- Show (readonly) services (with treatment details if available) rendered using a appointments 
+
+SignUp
+- Give consent for data processing
+-- Explicit opt-in for collection/use of personal & medical data for treatment, billing, insurance.
+-- (timestamp, consent version).
+
+WalkIn
+- first name, last name, email all required
+
+staff role pn patient nav
+- 
+
+UI signup, first_name and last name
+
+#############
+LoginPage
+- signup update
+-- remove Username
+-- add First Name, Last name
+-- signup sent email validation link
+-- need user to click the link for validation
+-- support invalid link if expires
+-- support reset validation link
+-- console log for for the validation link
+-- comment out the actual email sending utilitiy, will use console log for the dev for the meantime
+
+On SingUP button click in main page should route to loginPage with signup tab active
+always include server side implementation needed.
+preform a type ot lint check first
+always list files that are affected/updated.

@@ -1,0 +1,504 @@
+'use client';
+
+import React, { useState, useRef, useCallback, useImperativeHandle, forwardRef } from 'react';
+import { Upload, X, File, Image, FileText, Loader2 } from 'lucide-react';
+import { Button } from './ui/button';
+import { Card, CardContent } from './ui/card';
+import { toast } from 'sonner';
+import { MedicalFile, FileUploadProgress } from '../types';
+
+interface FileUploadProps {
+  recordId: string;
+  recordType: 'medical_info' | 'allergy' | 'medication' | 'correction_request';
+  patientId: string;
+  patientEmail: string;
+  uploadedBy: string;
+  uploadedByName: string;
+  files: MedicalFile[];
+  onFilesChange: (files: MedicalFile[]) => void;
+  disabled?: boolean;
+  maxFiles?: number;
+  autoUpload?: boolean; // New prop to control auto-upload behavior
+}
+
+export interface FileUploadRef {
+  uploadPendingFiles: () => Promise<MedicalFile[]>;
+  hasPendingFiles: () => boolean;
+  clearPendingFiles: () => void;
+}
+
+interface PendingFile {
+  id: string;
+  file: File;
+  description: string;
+}
+
+const FileUpload = forwardRef<FileUploadRef, FileUploadProps>((
+  {
+    recordId,
+    recordType,
+    patientId,
+    patientEmail,
+    uploadedBy,
+    uploadedByName,
+    files,
+    onFilesChange,
+    disabled = false,
+    maxFiles = 5,
+    autoUpload = false, // Default to false - no auto-upload
+  },
+  ref
+) => {
+  const [dragActive, setDragActive] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState<FileUploadProgress[]>([]);
+  const [pendingFiles, setPendingFiles] = useState<PendingFile[]>([]);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const getFileIcon = (fileType: string) => {
+    if (fileType.startsWith('image/')) {
+      return <Image className="w-4 h-4 flex-shrink-0" />;
+    } else if (fileType === 'application/pdf') {
+      return <FileText className="w-4 h-4 flex-shrink-0" />;
+    } else {
+      return <File className="w-4 h-4 flex-shrink-0" />;
+    }
+  };
+
+  const formatFileSize = (bytes: number) => {
+    if (bytes === 0) return '0 Bytes';
+    const k = 1024;
+    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+  };
+
+  const validateFile = (file: File): string | null => {
+    const allowedTypes = [
+      'image/jpeg', 'image/png', 'image/gif', 'image/webp',
+      'application/pdf',
+      'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      'text/plain'
+    ];
+
+    if (!allowedTypes.includes(file.type)) {
+      return 'File type not allowed. Please upload images, PDFs, or documents.';
+    }
+
+    if (file.size > 10 * 1024 * 1024) {
+      return 'File size too large. Maximum size is 10MB.';
+    }
+
+    return null;
+  };
+
+  const uploadFile = async (file: File, description: string = ''): Promise<MedicalFile | null> => {
+    const progressId = `${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    
+    // Add to upload progress
+    const newProgress: FileUploadProgress = {
+      id: progressId,
+      fileName: file.name,
+      progress: 0,
+      status: 'uploading'
+    };
+    
+    setUploadProgress(prev => [...prev, newProgress]);
+
+    return new Promise((resolve, reject) => {
+      try {
+        const formData = new FormData();
+        formData.append('file', file);
+        formData.append('recordId', recordId);
+        formData.append('recordType', recordType);
+        formData.append('patientId', patientId);
+        formData.append('patientEmail', patientEmail);
+        formData.append('uploadedBy', uploadedBy);
+        formData.append('uploadedByName', uploadedByName);
+        formData.append('description', description);
+
+        const xhr = new XMLHttpRequest();
+
+        // Track upload progress
+        xhr.upload.addEventListener('progress', (e) => {
+          if (e.lengthComputable) {
+            const percentComplete = Math.round((e.loaded / e.total) * 100);
+            setUploadProgress(prev => 
+              prev.map(p => p.id === progressId ? { ...p, progress: percentComplete } : p)
+            );
+          }
+        });
+
+        // Handle completion
+        xhr.addEventListener('load', () => {
+          if (xhr.status >= 200 && xhr.status < 300) {
+            const data = JSON.parse(xhr.responseText);
+            
+            // Update progress to completed
+            setUploadProgress(prev => 
+              prev.map(p => p.id === progressId ? { ...p, progress: 100, status: 'completed' } : p)
+            );
+
+            toast.success(`File "${file.name}" uploaded successfully`);
+            
+            // Remove from progress after delay
+            setTimeout(() => {
+              setUploadProgress(prev => prev.filter(p => p.id !== progressId));
+            }, 2000);
+
+            resolve(data.file);
+          } else {
+            const errorData = JSON.parse(xhr.responseText);
+            throw new Error(errorData.error || 'Upload failed');
+          }
+        });
+
+        // Handle errors
+        xhr.addEventListener('error', () => {
+          const error = new Error('Network error during upload');
+          setUploadProgress(prev => 
+            prev.map(p => p.id === progressId ? { 
+              ...p, 
+              status: 'error', 
+              error: error.message 
+            } : p)
+          );
+          toast.error(`Failed to upload "${file.name}": ${error.message}`);
+          reject(error);
+        });
+
+        // Handle abort
+        xhr.addEventListener('abort', () => {
+          const error = new Error('Upload cancelled');
+          setUploadProgress(prev => prev.filter(p => p.id !== progressId));
+          reject(error);
+        });
+
+        // Send request
+        xhr.open('POST', '/api/files');
+        xhr.send(formData);
+      } catch (error) {
+        console.error('Upload error:', error);
+        setUploadProgress(prev => 
+          prev.map(p => p.id === progressId ? { 
+            ...p, 
+            status: 'error', 
+            error: error instanceof Error ? error.message : 'Upload failed' 
+          } : p)
+        );
+        toast.error(`Failed to upload "${file.name}": ${error instanceof Error ? error.message : 'Unknown error'}`);
+        reject(error);
+      }
+    });
+  };
+
+  // Expose methods to parent component via ref
+  useImperativeHandle(ref, () => ({
+    uploadPendingFiles: async (): Promise<MedicalFile[]> => {
+      const uploadedFiles: MedicalFile[] = [];
+      
+      for (const pending of pendingFiles) {
+        try {
+          const uploadedFile = await uploadFile(pending.file, pending.description);
+          if (uploadedFile) {
+            uploadedFiles.push(uploadedFile);
+          }
+        } catch (error) {
+          console.error('Error uploading pending file:', error);
+        }
+      }
+      
+      // Clear pending files after upload
+      setPendingFiles([]);
+      
+      // Update parent's files list
+      onFilesChange([...files, ...uploadedFiles]);
+      
+      return uploadedFiles;
+    },
+    hasPendingFiles: (): boolean => {
+      return pendingFiles.length > 0;
+    },
+    clearPendingFiles: (): void => {
+      setPendingFiles([]);
+    }
+  }));
+
+  const handleFiles = useCallback(async (fileList: FileList) => {
+    if (disabled) return;
+    
+    const newFiles = Array.from(fileList);
+    
+    // Check total files including already uploaded and pending
+    const totalFiles = files.length + pendingFiles.length + newFiles.length;
+    if (totalFiles > maxFiles) {
+      toast.error(`Maximum ${maxFiles} files allowed`);
+      return;
+    }
+
+    for (const file of newFiles) {
+      const validationError = validateFile(file);
+      if (validationError) {
+        toast.error(`${file.name}: ${validationError}`);
+        continue;
+      }
+      
+      if (autoUpload) {
+        // Auto-upload mode (for existing functionality)
+        const uploadedFile = await uploadFile(file);
+        if (uploadedFile) {
+          onFilesChange([...files, uploadedFile]);
+        }
+      } else {
+        // Queue mode - add to pending files
+        const pendingFile: PendingFile = {
+          id: `pending_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+          file,
+          description: ''
+        };
+        setPendingFiles(prev => [...prev, pendingFile]);
+        toast.success(`"${file.name}" added to queue. Click Add/Update to upload.`);
+      }
+    }
+  }, [disabled, files, pendingFiles, maxFiles, autoUpload, onFilesChange]);
+
+  const handleDrag = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+  }, []);
+
+  const handleDragIn = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (e.dataTransfer.items && e.dataTransfer.items.length > 0) {
+      setDragActive(true);
+    }
+  }, []);
+
+  const handleDragOut = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDragActive(false);
+  }, []);
+
+  const handleDrop = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDragActive(false);
+    
+    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+      handleFiles(e.dataTransfer.files);
+    }
+  }, [handleFiles]);
+
+  const handleFileInput = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files.length > 0) {
+      handleFiles(e.target.files);
+    }
+  }, [handleFiles]);
+
+  const deletePendingFile = (fileId: string): void => {
+    setPendingFiles(prev => prev.filter(f => f.id !== fileId));
+    toast.success('File removed from queue');
+  };
+
+  const deleteUploadedFile = async (fileId: string): Promise<void> => {
+    try {
+      const response: Response = await fetch(`/api/files/${fileId}`, {
+        method: 'DELETE',
+      });
+
+      const data = await response.json();
+
+      if (response.ok) {
+        onFilesChange(files.filter(f => f.id !== fileId));
+        toast.success('File deleted successfully');
+      } else {
+        throw new Error(data.error || 'Delete failed');
+      }
+    } catch (error) {
+      console.error('Delete error:', error);
+      toast.error(`Failed to delete file: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  };
+
+  const downloadFile = (fileId: string, fileName: string) => {
+    const link = document.createElement('a');
+    link.href = `/api/files/${fileId}`;
+    link.download = fileName;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  const totalPendingAndUploaded = files.length + pendingFiles.length;
+
+  return (
+    <div className="space-y-4 w-full overflow-hidden">
+      {/* Upload Area */}
+      {!disabled && totalPendingAndUploaded < maxFiles && (
+        <Card className="w-full overflow-hidden">
+          <CardContent className="p-6">
+            <div
+              className={`border-2 border-dashed rounded-lg p-6 text-center transition-colors ${
+                dragActive
+                  ? 'border-blue-500 bg-blue-50'
+                  : 'border-gray-300 hover:border-gray-400'
+              }`}
+              onDragEnter={handleDragIn}
+              onDragLeave={handleDragOut}
+              onDragOver={handleDrag}
+              onDrop={handleDrop}
+            >
+              <Upload className="w-8 h-8 text-gray-400 mx-auto mb-4" />
+              <p className="text-gray-600 mb-2">
+                Drag and drop files here, or{' '}
+                <button
+                  type="button"
+                  className="text-CustomPink1 hover:text-blue-700 underline"
+                  onClick={() => fileInputRef.current?.click()}
+                >
+                  browse
+                </button>
+              </p>
+              <p className="text-sm text-gray-500">
+                Maximum {maxFiles} files, 10MB each. Supported: Images, PDF, Word documents, Text files
+              </p>
+              <input
+                ref={fileInputRef}
+                type="file"
+                multiple
+                className="hidden"
+                onChange={handleFileInput}
+                accept="image/*,.pdf,.doc,.docx,.txt"
+              />
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Upload Progress */}
+      {uploadProgress.length > 0 && (
+        <Card className="w-full overflow-hidden">
+          <CardContent className="p-4">
+            <h4 className="mb-3">Uploading Files</h4>
+            <div className="space-y-3">
+              {uploadProgress.map((progress) => (
+                <div key={progress.id} className="flex items-center gap-3 w-full min-w-0">
+                  <div className="flex-1 min-w-0 overflow-hidden">
+                    <div className="flex items-center justify-between mb-1 gap-2">
+                      <span className="text-sm truncate">{progress.fileName}</span>
+                      <span className="text-sm text-gray-500 flex-shrink-0">
+                        {progress.status === 'uploading' && `${progress.progress}%`}
+                        {progress.status === 'completed' && 'Complete'}
+                        {progress.status === 'error' && 'Error'}
+                      </span>
+                    </div>
+                    {progress.status === 'uploading' && (
+                      <div className="w-full bg-gray-200 rounded-full h-2">
+                        <div 
+                          className="bg-blue-600 h-2 rounded-full transition-all duration-300"
+                          style={{ width: `${progress.progress}%` }}
+                        />
+                      </div>
+                    )}
+                    {progress.status === 'error' && progress.error && (
+                      <p className="text-sm text-red-600 break-words">{progress.error}</p>
+                    )}
+                  </div>
+                  {progress.status === 'uploading' && (
+                    <Loader2 className="w-4 h-4 flex-shrink-0 animate-spin text-CustomPink1" />
+                  )}
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Pending Files Queue (shown when autoUpload is false) */}
+      {!autoUpload && pendingFiles.length > 0 && (
+        <Card className="w-full overflow-hidden">
+          <CardContent className="p-4">
+            <h4 className="mb-3">Queued Files ({pendingFiles.length})</h4>
+            <p className="text-sm text-amber-600 mb-3">
+              These files will be uploaded when you click the Add/Update button
+            </p>
+            <div className="space-y-3">
+              {pendingFiles.map((pending) => (
+                <div key={pending.id} className="flex items-center gap-3 p-3 border rounded-lg w-full min-w-0 bg-amber-50">
+                  <div className="flex-shrink-0">
+                    {getFileIcon(pending.file.type)}
+                  </div>
+                  <div className="flex-1 min-w-0 overflow-hidden">
+                    <p className="truncate">{pending.file.name}</p>
+                    <p className="text-sm text-gray-500 truncate">
+                      {formatFileSize(pending.file.size)}
+                    </p>
+                  </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => deletePendingFile(pending.id)}
+                    className="text-red-600 hover:text-red-700 flex-shrink-0"
+                  >
+                    <X className="w-4 h-4" />
+                  </Button>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Uploaded Files */}
+      {files.length > 0 && (
+        <Card className="w-full overflow-hidden">
+          <CardContent className="p-4">
+            <h4 className="mb-3">Uploaded Files ({files.length})</h4>
+            <div className="space-y-3">
+              {files.map((file) => (
+                <div key={file.id} className="flex items-center gap-3 p-3 border rounded-lg w-full min-w-0">
+                  <div className="flex-shrink-0">
+                    {getFileIcon(file.fileType)}
+                  </div>
+                  <div className="flex-1 min-w-0 overflow-hidden">
+                    <p className="truncate">{file.originalFileName}</p>
+                    <p className="text-sm text-gray-500 truncate">
+                      {formatFileSize(file.fileSize)} • {new Date(file.uploadedAt).toLocaleDateString()}
+                    </p>
+                    {file.description && (
+                      <p className="text-sm text-gray-600 mt-1 truncate">{file.description}</p>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2 flex-shrink-0">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => downloadFile(file.id, file.originalFileName)}
+                    >
+                      Download
+                    </Button>
+                    {!disabled && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => deleteUploadedFile(file.id)}
+                        className="text-red-600 hover:text-red-700"
+                      >
+                        <X className="w-4 h-4" />
+                      </Button>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+    </div>
+  );
+});
+
+FileUpload.displayName = 'FileUpload';
+
+export default FileUpload;

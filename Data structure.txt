@@ -1,0 +1,188 @@
+Appointment booked data
+{
+  "id": "c75da4cf-e9a4-4e5d-bce6-4003613766e8",
+  "date": "2025-09-08",
+  "time": "10:00",
+  "type": "home_booking_request",
+  "reason": "Tooth Extraction",
+  "status": "booked",
+  "createdAt": "2025-09-08T07:46:31.921Z",
+  "updatedAt": "2025-09-08T07:46:31.921Z",
+  "bufferTime": 20,
+  "patientName": "Black Swan",
+  "patientEmail": "irayjb.08@gmail.com",
+  "patientPhone": "",
+  "requestedDate": "2025-09-08",
+  "serviceDetails": [
+    {
+      "id": "sc_5",
+      "name": "Tooth Extraction",
+      "buffer": 20,
+      "duration": 30,
+      "base_price": 250,
+      "description": "Surgical or simple removal of damaged or problematic teeth"
+    }
+  ],
+  "appointmentDate": "2025-09-08",
+  "appointmentTime": "10:00",
+  "serviceDuration": 30,
+  "requestedTimeSlot": "10:00-10:50"
+}
+
+
+Completed Appointment data
+{
+    "id": "cb9ef581-7a08-45b5-8f8c-560ff886ed44",
+    "date": "2025-09-08",
+    "time": "13:00",
+    "type": "home_booking_request",
+    "reason": "Routine Cleaning",
+    "status": "completed",
+    "createdAt": "2025-09-08T10:31:47.817Z",
+    "updatedAt": "2025-09-08T10:31:47.817Z",
+    "bufferTime": 15,
+    "patientName": "Black Swan",
+    "patientEmail": "irayjb.11@gmail.com",
+    "patientPhone": "",
+    "requestedDate": "2025-09-08",
+    "serviceDetails": [
+        {
+            "id": "sc_1",
+            "name": "Routine Cleaning",
+            "buffer": 15,
+            "duration": 60,
+            "base_price": 120,
+            "description": "Comprehensive dental cleaning and oral health examination with plaque and tartar removal"
+        },
+        {
+            "id": "sc_2",
+            "name": "Dental Filling",
+            "description": "Composite or amalgam filling for cavity restoration",
+            "base_price": 180,
+            "duration": 45,
+            "buffer": 15,
+            "has_treatment_detail": true,
+            "finalPrice": 180,
+            "treatments": [
+                {
+                    "id": "fd2f0264-3cae-42f2-b31c-ab94587a53a7",
+                    "detail": "sadasd"
+                }
+            ],
+            "totalAmount": 180,
+            "isInitial": false
+        }
+    ],
+    "appointmentDate": "2025-09-08",
+    "appointmentTime": "13:00",
+    "serviceDuration": 60,
+    "requestedTimeSlot": "13:00-14:15",
+    "completionNotes": "",
+    "completedBy": "staff@dentalclinic.com",
+    "completedAt": "2025-09-08T10:32:14.498Z"
+}
+
+
+Proposed Database table
+Perfect, that clarifies the design even further. We can adjust the schema to handle:
+
+* **Manual price changes / discounts per service** → `AppointmentServices.final_price`.
+* **Nullable dentist** → `dentist_id` in `Appointments`.
+
+Here’s the **updated, clean schema** reflecting your changes:
+
+---
+
+## **1️⃣ Users (Patients & Staff)**
+
+| Column      | Type      | Notes                       |
+| ----------- | --------- | --------------------------- |
+| id          | UUID / PK | User ID                     |
+| name        | VARCHAR   | Full name                   |
+| email       | VARCHAR   | Unique                      |
+| phone       | VARCHAR   | Optional                    |
+| role        | ENUM      | 'patient', 'staff', 'admin' |
+| created\_at | TIMESTAMP |                             |
+| updated\_at | TIMESTAMP |                             |
+
+---
+
+## **2️⃣ Service Catalog**
+
+| Column      | Type      | Notes                                  |
+| ----------- | --------- | -------------------------------------- |
+| id          | UUID / PK | Service catalog ID                     |
+| name        | VARCHAR   | Service name                           |
+| description | TEXT      | Description                            |
+| base\_price | DECIMAL   | Default price                          |
+| duration    | INT       | Duration in minutes                    |
+| buffer      | INT       | Buffer in minutes for scheduling slots |
+| created\_at | TIMESTAMP |                                        |
+| updated\_at | TIMESTAMP |                                        |
+
+---
+
+## **3️⃣ Appointments**
+
+| Column               | Type      | Notes                                                    |
+| -------------------- | --------- | -------------------------------------------------------- |
+| id                   | UUID / PK | Appointment ID                                           |
+| patient\_id          | UUID / FK | User with role='patient'                                 |
+| dentist\_id          | UUID / FK | Nullable; User with role='staff', assigned on completion |
+| status               | ENUM      | 'scheduled', 'completed', 'canceled'                     |
+| appointment\_date    | DATE      | Confirmed date                                           |
+| appointment\_time    | TIME      | Start time                                               |
+| completion\_notes    | TEXT      | Nullable notes added after completion                    |
+| cancellation\_reason | TEXT      | Nullable; only for canceled appointments                 |
+| created\_at          | TIMESTAMP |                                                          |
+| updated\_at          | TIMESTAMP |                                                          |
+
+---
+
+## **4️⃣ Appointment Services (Booked Service Instances)**
+
+* Stores snapshot of catalog info and **manual price changes** per appointment.
+
+| Column          | Type      | Notes                                    |
+| --------------- | --------- | ---------------------------------------- |
+| id              | UUID / PK | Service instance ID                      |
+| appointment\_id | UUID / FK | Links to Appointments                    |
+| catalog\_id     | UUID / FK | References Service Catalog               |
+| name            | VARCHAR   | Snapshot name                            |
+| description     | TEXT      | Snapshot description                     |
+| duration        | INT       | Duration in minutes                      |
+| buffer          | INT       | Buffer in minutes                        |
+| base\_price     | DECIMAL   | Price from catalog                       |
+| final\_price    | DECIMAL   | Price after manual adjustment / discount |
+| is\_initial     | BOOLEAN   | Optional flag                            |
+| created\_at     | TIMESTAMP |                                          |
+| updated\_at     | TIMESTAMP |                                          |
+
+---
+
+## **5️⃣ Treatments (Optional)**
+
+* Linked to **Appointment Services**.
+
+| Column                   | Type      | Notes                        |
+| ------------------------ | --------- | ---------------------------- |
+| id                       | UUID / PK | Treatment ID                 |
+| appointment\_service\_id | UUID / FK | Links to AppointmentServices |
+| detail                   | TEXT      | Treatment description        |
+| created\_at              | TIMESTAMP |                              |
+| updated\_at              | TIMESTAMP |                              |
+
+---
+
+### ✅ **Key Updates**
+
+1. `AppointmentServices.final_price` allows manual price adjustment / discounts.
+2. `Appointments.dentist_id` is now nullable → assigned during completion.
+3. `AppointmentServices` keeps snapshot fields (`name`, `description`, `duration`, `buffer`) to avoid catalog changes affecting historical data.
+4. `AppointmentServices.base_price` stores the original catalog price; `final_price` can differ.
+
+---
+
+If you want, I can now **draw an ER diagram with these updates**, showing relationships, nullable dentist, and service instance pricing.
+
+Do you want me to make that ER diagram?
