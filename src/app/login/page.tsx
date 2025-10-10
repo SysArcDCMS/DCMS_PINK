@@ -101,8 +101,18 @@ function LoginPageContent() {
       });
       router.push('/dashboard');
     } else if (result.error) {
+      // Check if this is an email validation error
+      if (result.errorCode === 'EMAIL_NOT_VALIDATED' || result.error.toLowerCase().includes('verify your email')) {
+        setPendingEmail(signInData.email);
+        setActiveTab('signup');
+        setSignUpStep('email-sent');
+        toast.error('Email Not Verified', {
+          description: 'Please check your email and click the verification link to activate your account.',
+          duration: 6000,
+        });
+      }
       // Check if this is a lockout message (contains "too many failed login attempts")
-      if (result.error.toLowerCase().includes('too many failed login attempts')) {
+      else if (result.error.toLowerCase().includes('too many failed login attempts')) {
         toast.error('Account Temporarily Locked', {
           description: result.error,
           duration: 10000, // Show longer for security message
@@ -157,19 +167,8 @@ function LoginPageContent() {
     
     const result = await signUp(signUpData.email, signUpData.password, signUpData.first_name, signUpData.last_name);
     if (result.success) {
-      if (result.emailValidationRequired) {
-        setPendingEmail(signUpData.email);
-        setSignUpStep('email-sent');
-        toast.success('Registration successful!', {
-          description: 'Please check your email for a validation link to complete your registration.'
-        });
-      } else {
-        // Fallback for immediate registration (shouldn't happen in new flow)
-        toast.success('Account Created!', {
-          description: 'Welcome to Go-Goyagoy. You are now signed in.'
-        });
-        router.push('/dashboard');
-      }
+      // Redirect to signup success page with email parameter
+      router.push(`/signup-success?email=${encodeURIComponent(signUpData.email)}`);
     } else if (result.error) {
       toast.error('Sign Up Failed', {
         description: result.error
