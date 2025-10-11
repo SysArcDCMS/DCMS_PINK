@@ -113,11 +113,6 @@ export const Navigation: React.FC<NavigationProps> = ({ activeSection, setActive
           { id: 'services', label: 'Services Catalog', icon: Wrench },
           { id: 'inventory', label: 'Inventory', icon: Package },
           { id: 'admin/users', label: 'User Management', icon: Shield },
-          //ADDITIONAL FOR DEBUG ONLY
-          { id: 'service-history', label: 'Service History', icon: History },
-          { id: 'billing-history', label: 'Billing History', icon: CreditCard },
-          { id: 'medical-records', label: 'Medical Records', icon: Heart },
-          //ADDITIONAL FOR DEBUG ONLY
           { id: 'profile', label: 'My Profile', icon: User }
         ];
         
