@@ -273,7 +273,7 @@ export function Homepage({ onLoginClick, onSignUpClick, onBookingSuccess }: Home
           <div className="text-center">
             <h4 className="text-lg font-semibold">Go-Goyagoy</h4>
             <p className="mt-2 font-semibold">
-              © 2024 Go-Goyagoy. All rights reserved.
+              © 2025 Go-Goyagoy. All rights reserved.
             </p>
           </div>
         </div>
